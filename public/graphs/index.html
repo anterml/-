@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Графики</title>
+    <style>
+      body {
+        grid-gap: 10px;
+        align-items: start;
+        margin: 0;
+        padding: 10px 20px;
+      }
+
+      .filter-site {
+        display: flex;
+        flex-flow: row wrap;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .filter-site label {
+        cursor: pointer;
+        display: flex;
+        flex-flow: row nowrap;
+        user-select: none;
+      }
+    </style>
+    <link
+      rel="stylesheet"
+      href="../general.css"
+    />
+    <link
+      rel="stylesheet"
+      href="chartist.min.css"
+    />
+  </head>
+  <body>
+    <div class="nav">
+      <a
+        href="/"
+        class="nav-item"
+        >Главная</a
+      >
+      <a
+        href="/candidates"
+        class="nav-item"
+        >Кандидаты</a
+      >
+      <a
+        href="/releases"
+        class="nav-item"
+        >Релиз</a
+      >
+      <a
+        href="/graphs"
+        class="nav-item selected"
+        >Графики</a
+      >
+    </div>
+    <div class="filter">
+      <div class="filter-site"></div>
+      <!-- <select class="filter-site"></select> -->
+      <select class="filter-product_name"></select>
+      <select class="filter-sku"></select>
+    </div>
+    <div
+      id="container"
+      style="min-height: 500px"
+    ></div>
+    <div class="product-diff"></div>
+    <script src="https://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/stock/modules/stock.js"></script>
+
+    <script src="main.js"></script>
+    <script>
+      const filterOptions = {
+        site: "",
+        sites: [],
+        product: "",
+        sku: "",
+      }
+
+      window.chart
+      const chartOptions = {
+        height: "1000px",
+        yAxis: {
+          /* height: '150%',
+        resize: {
+          enabled: true
+        } */
+        },
+        rangeSelector: {
+          selected: 2,
+        },
+
+        plotOptions: {
+          column: {
+            dataLabels: {
+              enabled: true,
+            },
+            enableMouseTracking: true,
+          },
+        },
+
+        legend: {
+          layout: "horizontal",
+          align: "top",
+          verticalAlign: "middle",
+        },
+
+        chart: {
+          type: "column",
+          type: "line",
+        },
+
+        title: {
+          text: "Цены",
+        },
+      }
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        const response = await fetch("/shop/api/products/release")
+        let data = await response.json()
+
+        data.forEach(item => {
+          item.createdAt = item.createdAt.split("T")[0]
+        })
+
+        const newData2 = {}
+        const priceDiffs = {}
+        data.forEach(
+          ({ name, site, price, createdAt, sku, warning, error }) => {
+            if (site === "site5" || warning || error) return
+
+            const fullName = `${site}|${name}|${sku}`
+            if (!priceDiffs[fullName]) {
+              priceDiffs[fullName] = [price]
+            } else if (!priceDiffs[fullName].includes(price)) {
+              priceDiffs[fullName].push(price)
+            }
+          },
+        )
+
+        const productDiffs = Object.keys(priceDiffs).reduce((acc, name) => {
+          if (priceDiffs[name].length > 1) {
+            const fullName = name.split("|").slice(1).join(" ")
+            if (!acc.includes(fullName)) {
+              acc.push(fullName)
+            }
+          }
+          return acc
+        }, [])
+
+        const productNames = []
+        const sites = []
+        const skuList = {}
+
+        data.forEach(product => {
+          const { name, site, sku } = product
+
+          if (!productNames.includes(name)) productNames.push(name)
+          if (!sites.includes(site)) sites.push(site)
+
+          if (!skuList[name]) skuList[name] = []
+          const lowerSKU = sku.toLowerCase()
+          if (!skuList[name].includes(lowerSKU)) skuList[name].push(lowerSKU)
+        })
+
+        // Обработка фильтра по сайтам
+        const siteSelect = document.querySelector(".filter-site")
+        filterOptions.sites = sites
+        siteSelect.innerHTML = ["Все", ...sites]
+          .map(
+            site => `<label>
+              <input class="filter-item-checkbox" type="checkbox" checked value="${site}">
+              <span class='filter-item-text'>${site}</span>
+            </label>`,
+          )
+          .join("")
+
+        const sitesElems = Array.from(siteSelect.querySelectorAll("input"))
+        for (const input of sitesElems) {
+          input.addEventListener("change", e => {
+            const { checked, value } = e.target
+            if (value === "Все") {
+              sitesElems.forEach(elem => (elem.checked = checked))
+              filterOptions.sites = checked ? sites.slice() : []
+            } else {
+              if (checked && !filterOptions.sites.includes(value))
+                filterOptions.sites.push(value)
+              else if (!checked)
+                filterOptions.sites = filterOptions.sites.filter(
+                  site => site !== value,
+                )
+
+              sitesElems[0].checked =
+                filterOptions.sites.length === sites.length
+            }
+            getSeries(true)
+          })
+        }
+
+        // Обработка фильтров по sku продукта
+        const skuSelect = document.querySelector(".filter-sku")
+        filterOptions.sku = (skuList[productNames[0]] || [])[0]
+        skuSelect.innerHTML = (skuList[productNames[0]] || [])
+          .map(name => `<option value="${name}">${name}</option>`)
+          .join("")
+
+        // установить sku по умолчанию
+        skuSelect.addEventListener("change", e => {
+          filterOptions.sku = e.target.value
+          getSeries(true)
+          //showData(data)
+        })
+
+        // Обработка фильтров по названию продукта
+        const productNameSelect = document.querySelector(".filter-product_name")
+        filterOptions.product = productNames[0]
+        productNameSelect.innerHTML = productNames
+          .map(name => `<option value="${name}">${name}</option>`)
+          .join("")
+
+        productNameSelect.addEventListener("change", e => {
+          const skus = skuList[e.target.value] || []
+          skuSelect.innerHTML = skus
+            .map(name => `<option value="${name}">${name}</option>`)
+            .join("")
+
+          filterOptions.product = e.target.value
+          filterOptions.sku = skus[0]
+
+          getSeries(true)
+        })
+
+        document.querySelector(".product-diff").innerHTML = productDiffs
+          .map(value => `<div class="btn-product-diff">${value}</div>`)
+          .join("")
+
+        function getOptionHtml(values) {
+          const options = values
+            .sort()
+            .map(name => `<option value="${name}">${name}</option>`)
+          return '<option value="">Все</option>' + options.join("")
+        }
+
+        const series = getSeries()
+        chart = Highcharts.stockChart("container", {
+          ...chartOptions,
+          series,
+        })
+
+        function getSeries(update) {
+          const { sites, product, sku } = filterOptions
+          const productName = product || productNames[0]
+
+          const series = sites.map(site => {
+            const buff2 = data.filter(item => {
+              return (
+                site === item.site &&
+                item.name === product &&
+                item.sku.toLowerCase() === sku
+              )
+            })
+
+            const buff = data
+              .filter(
+                item =>
+                  site === item.site &&
+                  item.name === product &&
+                  item.sku.toLowerCase() === sku,
+              )
+              .map(item => [
+                new Date(item.createdAt).getTime(),
+                Number((item.price / 1000).toFixed(1)),
+              ])
+
+            return {
+              name: site,
+              data: buff,
+              //color: '#000000',
+              tooltip: {
+                valueDecimals: 2,
+              },
+            }
+          })
+
+          if (!update) return series
+          for (let i = chart.series.length - 1; i >= 0; --i) {
+            chart.series[i].remove()
+          }
+          series.forEach(serie => chart.addSeries(serie))
+        }
+      })
+    </script>
+  </body>
+</html>

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Главная</title>
+    <link
+      rel="stylesheet"
+      href="general.css"
+    />
+    <script>
+      const PRODUCTS = [
+        "product-name1",
+        //...
+      ]
+
+      const SITES = {
+        site1: "site1",
+        //...
+      }
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        const response = await fetch(`/shop/api/last-update`)
+        const { candidate, release } = await response.json()
+        if (candidate)
+          document.querySelector(
+            ".last-update-candidate",
+          ).textContent = `Candidate ${candidate.createdAt}`
+        if (release)
+          document.querySelector(
+            ".last-update-release",
+          ).textContent = `Release ${release.createdAt}`
+        createFilterBySites()
+        createFilterByProducts()
+        createBtn("check", "Проверить")
+        createBtn("load", "Обработать")
+      })
+
+      function createBtn(type, name) {
+        const btnload = document.createElement("button")
+        btnload.className = `btn-${type}`
+        btnload.textContent = name
+        btnload.addEventListener("click", async () => {
+          const sites = Array.from(
+            document.querySelectorAll(".filters-sites .filter:checked"),
+          ).map(input => input.value)
+          const products = Array.from(
+            document.querySelectorAll(".filters-products .filter:checked"),
+          ).map(input => input.value)
+
+          if (sites.length === 0 || products.length === 0)
+            return console.info("Выберите продукты и сайты!")
+
+          const data = JSON.stringify({ sites, products })
+          const response = await fetch(`/shop/fresh?type=${type}&data=${data}`)
+        })
+
+        let controlsBox = document.querySelector(".controls")
+        // создать контейнер для кнопок если нужно
+        if (!controlsBox) {
+          controlsBox = document.createElement("div")
+          controlsBox.className = "controls"
+          document.body.append(controlsBox)
+        }
+
+        controlsBox.append(btnload)
+      }
+
+      function createFilterBySites() {
+        const filters = Object.keys(SITES).map(
+          name =>
+            `<label>
+          <input class='filter' type='checkbox' value='${name}' />
+          ${name}
+        </label>`,
+        )
+
+        const box = document.createElement("div")
+        box.className = "filters-box filters-sites"
+        box.innerHTML = filters.join("")
+        document.body.append(box)
+
+        box.innerHTML += `
+        <label>
+          <input class='toggle-all' type='checkbox' />
+          Выбрать все
+        </label>
+      `
+
+        const toggleAllElem = box.querySelector(".toggle-all")
+        const filterElems = Array.from(
+          document.querySelectorAll(".filters-sites .filter"),
+        )
+
+        toggleAllElem.addEventListener("change", e => {
+          for (const elem of filterElems) {
+            elem.checked = e.target.checked
+          }
+        })
+
+        for (const elem of filterElems) {
+          elem.addEventListener("change", e => {
+            toggleAllElem.checked = !filterElems.find(elem => !elem.checked)
+          })
+        }
+      }
+
+      function createFilterByProducts() {
+        const filters = PRODUCTS.map(
+          name =>
+            `<label>
+          <input type='checkbox' class='filter' value='${name}' />
+          ${name}
+        </label>`,
+        )
+        const box = document.createElement("div")
+        box.className = "filters-box filters-products"
+        box.innerHTML = filters.join("")
+        document.body.append(box)
+
+        box.innerHTML += `
+        <label>
+          <input class='toggle-all' type='checkbox' />
+          Выбрать все
+        </label>
+      `
+
+        const toggleAllElem = box.querySelector(".toggle-all")
+        const filterElems = Array.from(
+          document.querySelectorAll(".filters-products .filter"),
+        )
+        const filtersBox = document.querySelector(".filters-products")
+        let isCtrlPressed = false
+        let isFilterClicked = false
+        let isMultiSelect = false
+
+        window.addEventListener("keydown", e => {
+          isCtrlPressed = e.key === "Control"
+        })
+        window.addEventListener("keyup", e => {
+          isCtrlPressed = false
+        })
+
+        filtersBox.addEventListener("mousedown", e => {
+          switch (e.target.nodeName.toLowerCase()) {
+            case "label":
+              const target = e.target.children[0]
+              isMultiSelect =
+                isCtrlPressed && target && target.className === "filter"
+              if (isMultiSelect) target.checked = !target.checked
+          }
+        })
+
+        filtersBox.addEventListener("mouseup", e => {
+          isCtrlPressed = isMultiSelect = false
+        })
+
+        filtersBox.addEventListener("mouseout", e => {
+          isCtrlPressed = isMultiSelect
+        })
+
+        toggleAllElem.addEventListener("change", e => {
+          for (const elem of filterElems) {
+            elem.checked = e.target.checked
+          }
+        })
+
+        for (const elem of filterElems) {
+          elem.addEventListener("change", e => {
+            toggleAllElem.checked = !filterElems.find(elem => !elem.checked)
+          })
+
+          elem.parentNode.addEventListener("mouseover", e => {
+            if (isMultiSelect) {
+              const target = e.target.children[0]
+              target.checked = !target.checked
+            }
+          })
+        }
+      }
+    </script>
+    <style>
+      body {
+        display: grid;
+        grid-template-columns: auto auto 1fr;
+        grid-template-rows: auto 1fr;
+        grid-template-areas: "nav nav nav" "sites urls controls";
+        grid-gap: 10px;
+        align-items: start;
+        margin: 0;
+      }
+
+      .filters-box {
+        margin-bottom: 20px;
+        display: grid;
+        grid-template-columns: autofit(1fr);
+      }
+
+      label {
+        user-select: none;
+        cursor: pointer;
+        order: 1;
+      }
+
+      .filters-box label:last-child {
+        order: 0;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+
+      .filters-sites {
+        grid-area: sites;
+      }
+
+      .filters-products {
+        grid-area: urls;
+      }
+
+      .controls {
+        grid-area: controls;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nav">
+      <a
+        href="/"
+        class="nav-item selected"
+        >Главная</a
+      >
+      <a
+        href="/candidates"
+        class="nav-item"
+        >Кандидаты</a
+      >
+      <a
+        href="/releases"
+        class="nav-item"
+        >Релиз</a
+      >
+      <a
+        href="/graphs"
+        class="nav-item"
+        >Графики</a
+      >
+      <span class="nav-item last-update-candidate"></span>
+      <span class="nav-item last-update-release"></span>
+    </div>
+  </body>
+</html>

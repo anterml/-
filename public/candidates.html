@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Кандидаты</title>
+    <link
+      rel="stylesheet"
+      href="general.css"
+    />
+    <script>
+      const filterOptions = {
+        site: "",
+        error: false,
+        product: "",
+      }
+      document.addEventListener("DOMContentLoaded", async () => {
+        const response = await fetch("/shop/api/products/candidate")
+        let data = await response.json()
+        showData(data)
+
+        const productNames = []
+        const sites = []
+
+        data.forEach(product => {
+          const { name, site, createdAt } = product
+
+          if (!productNames.includes(name)) productNames.push(name)
+          if (!sites.includes(site)) sites.push(site)
+        })
+
+        // Обработка фильтра по сайтам
+        const siteSelect = document.querySelector(".filter-site")
+        siteSelect.innerHTML = getOptionHtml(sites)
+        siteSelect.addEventListener("change", e => {
+          filterOptions.site = e.target.value
+          showData(data)
+        })
+
+        // Обработка фильтров по названию продукта
+        const productNameInput = document.querySelector(
+          ".filter-match_product_name",
+        )
+        const productNameSelect = document.querySelector(".filter-product_name")
+        productNameSelect.innerHTML = getOptionHtml(productNames)
+
+        productNameInput.addEventListener("blur", e => {
+          filterOptions.product = e.target.value
+          productNameSelect.selectedIndex = 0
+          showData(data)
+        })
+
+        productNameSelect.addEventListener("change", e => {
+          filterOptions.product = e.target.value
+          productNameInput.value = ""
+          showData(data)
+        })
+
+        function getOptionHtml(values) {
+          const options = values
+            .sort()
+            .map(name => `<option value="${name}">${name}</option>`)
+          return '<option value="">Все</option>' + options.join("")
+        }
+
+        document
+          .querySelector(".info")
+          .addEventListener("click", async ({ target }) => {
+            if (target.classList.contains("btn-remove-product")) {
+              if (!confirm("Удалить позицию?")) return
+
+              target.disabled = true
+              const { id } = target.dataset
+              const response = await fetch(`/shop/api/product/${id}`, {
+                method: "delete",
+              })
+
+              if (response.status !== 200) {
+                target.disabled = false
+                return alert("Не получилось удалить позицию")
+              }
+
+              let node
+              while ((node = target.parentNode)) {
+                if (node.classList.contains("item")) {
+                  node.remove()
+                  break
+                }
+              }
+
+              data = data.filter(item => item._id !== id)
+            }
+          })
+
+        document
+          .querySelector(".btn_remove-all")
+          .addEventListener("click", async () => {
+            if (!confirm("Удалить все данные?")) return
+            try {
+              await fetch("/shop/remove-all-candidates", {
+                method: "delete",
+                body: {},
+              })
+              document.querySelector(".info").innerHTML = ""
+              console.log("Данные кандидатов успешно удалены")
+            } catch (e) {
+              console.log("Не получилось удалить данные кандидатов")
+            }
+          })
+
+        document
+          .querySelector(".btn_remove-selected")
+          .addEventListener("click", async () => {
+            const { site, error } = filterOptions
+            if (!(site || error)) return alert("Не выбраны опции")
+
+            if (!confirm(`Удалить данные site: ${site}, error: ${!!error}?`))
+              return
+            try {
+              await fetch("/shop/selected-candidates", {
+                method: "DELETE",
+                headers: {
+                  "Content-type": "application/json; charset=UTF-8",
+                },
+                body: JSON.stringify(filterOptions),
+              })
+
+              console.log("Данные кандидатов успешно удалены")
+              const response = await fetch("/shop/api/products/candidate")
+              data = await response.json()
+              showData(data)
+            } catch (e) {
+              console.log("Не получилось удалить данные кандидатов")
+            }
+          })
+
+        document
+          .querySelector(".btn_release")
+          .addEventListener("click", async () => {
+            if (data.find(item => item.error)) {
+              return alert("Сначала исправьте плохие позиции")
+            }
+
+            if (!confirm("Перевести кандидатов в релиз?")) return
+            try {
+              await fetch("/shop/release", {
+                method: "PUT",
+              })
+              console.log("Данные кандидатов успешно изменены на релиз")
+              const response = await fetch("/shop/api/products/candidate")
+              await response.json()
+              showData([])
+            } catch (e) {
+              console.log(e, "Не получилось удалить данные кандидатов")
+            }
+          })
+
+        // фильтр по сайтам
+        document.querySelector(".filter-site").addEventListener("change", e => {
+          const { value } = e.target
+          filterOptions.site = value === "Все" ? "" : value
+          showData(data)
+        })
+
+        // фильтр по плохим или всем
+        const filterElems = document.querySelectorAll(".filter-item")
+        for (const elem of filterElems) {
+          const { value } = elem.dataset
+          if (value === "bad")
+            elem.textContent = `Плохие ${
+              data.filter(item => !!item.error).length
+            }`
+          else if (value === "warning")
+            elem.textContent = `С недочетами ${
+              data.filter(item => !!item.warning).length
+            }`
+          else elem.textContent = `Все ${data.length}`
+
+          elem.addEventListener("click", e => {
+            if (!e.target.classList.contains("selected")) {
+              filterElems.forEach(elem => elem.classList.remove("selected"))
+              e.target.classList.add("selected")
+              filterOptions.error = e.target.dataset.value === "bad"
+              filterOptions.warning = e.target.dataset.value === "warning"
+              showData(data)
+            }
+          })
+        }
+
+        function showData(data) {
+          const { error, site, warning, product } = filterOptions
+          const anyFilter = error || site || warning || product
+          const products = anyFilter
+            ? data.filter(item => {
+                return (
+                  (!product || item.name.includes(product)) &&
+                  (!site || site === item.site) &&
+                  (!warning || !!item.warning) &&
+                  (!error || !!item.error)
+                )
+              })
+            : data
+
+          document.querySelector(
+            ".search-text",
+          ).textContent = `Найдено ${products.length} позиций`
+
+          function getWarningTextIfExists(warning) {
+            switch (warning) {
+              case 1:
+                return "Снят"
+              case 2:
+                return "404"
+              default:
+                return ""
+            }
+          }
+
+          const html = products
+            .map(
+              (
+                { _id, name, site, url, price, sku, error, warning, stocks },
+                i,
+              ) => {
+                const warn = typeof warning === "number" && warning > 0
+                const stock =
+                  Array.isArray(stocks) && stocks.length
+                    ? stocks.map(({ count }) => count).join(", ")
+                    : getWarningTextIfExists(warning)
+
+                return `
+            <div class="item" data-warning="${warn}" data-error="${!!error}">
+              <span class="index">${i + 1}</span>
+              <a href="${url}" class="url">Ссылка</a>
+              <div class="name">${name}</div>
+              <div class="site">${site}</div>
+              <div class="price">${price || ""}</div>
+              <div class="sku">${sku}</div>
+              <div class="stock">${stock}</div>
+              <div class="error">${error || ""}</div>
+              <button class='btn-remove-product' data-id="${_id}">Удалить</button>
+            </div>
+          `
+              },
+            )
+            .join("")
+
+          const header = `
+          <div class="item-header">
+            <span>№</span>
+            <div class="url">Ссылка</div>
+            <div class="name">Имя</div>
+            <div class="site">Сайт</div>
+            <div class="price">Цена</div>
+            <div class="sku">SKU</div>
+            <div class="stock">Наличие</div>
+            <div class="error">Ошибка</div>
+            <div></div>
+          </div>
+        `
+
+          document.querySelector(".info").innerHTML = `<div class="items">${
+            header + html
+          }</div>`
+        }
+      })
+    </script>
+    <style>
+      body {
+        grid-gap: 10px;
+        align-items: start;
+        margin: 0;
+        padding: 10px 20px;
+      }
+
+      .items {
+        display: grid;
+        grid-template-columns: repeat(9, max-content);
+        grid-gap: 0 15px;
+      }
+
+      .item,
+      .item-header {
+        display: grid;
+        grid-column: 1/-1;
+        grid-template-columns: subgrid;
+        padding: 6px 0;
+        /*grid-template-columns: 30px minmax(auto, max-content) 1fr 1fr auto 1fr 1fr 1 fr;*/
+      }
+
+      .item:nth-child(even) {
+        background-color: #efefef;
+      }
+
+      .item:hover {
+        background-color: #ccc;
+      }
+
+      .item[data-warning="true"] {
+        color: orange;
+      }
+
+      .item[data-error="true"] {
+        color: red;
+      }
+
+      .item-header {
+        font-weight: bold;
+      }
+
+      .index {
+        color: black;
+      }
+
+      .filter-item {
+        margin-right: 10px;
+        padding: 5px;
+        display: inline-block;
+      }
+
+      .filter-item:hover {
+        background-color: #efefef;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nav">
+      <a
+        href="/"
+        class="nav-item"
+        >Главная</a
+      >
+      <a
+        href="/candidates"
+        class="nav-item selected"
+        >Кандидаты</a
+      >
+      <a
+        href="/releases"
+        class="nav-item"
+        >Релиз</a
+      >
+      <a
+        href="/graphs"
+        class="nav-item"
+        >Графики</a
+      >
+    </div>
+    <div class="filter">
+      <div>
+        <button class="btn_remove-all">Удалить всё</button>
+        <button class="btn_remove-selected">Удалить выбранное</button>
+        <button class="btn_release">Релиз</button>
+      </div>
+      <select class="filter-site"></select>
+      <select class="filter-product_name"></select>
+      <input
+        class="filter-match_product_name"
+        placeholder="Имя продукта"
+      />
+      <span
+        class="filter-item selected"
+        data-value="all"
+        >Все</span
+      >
+      <span
+        class="filter-item"
+        data-value="bad"
+        >Плохие</span
+      >
+      <span
+        class="filter-item"
+        data-value="warning"
+        >С недочетами</span
+      >
+      <div class="search-text"></div>
+    </div>
+    <div class="info"></div>
+  </body>
+</html>

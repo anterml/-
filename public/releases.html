@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Релиз</title>
+    <link
+      rel="stylesheet"
+      href="general.css"
+    />
+    <script>
+      const filterOptions = {
+        site: "",
+        product: "",
+        productMatch: "",
+        date: "",
+      }
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        const response = await fetch("/shop/api/products/release")
+        const data = await response.json()
+
+        const productNames = []
+        const sites = []
+        const dates = []
+
+        data.forEach(product => {
+          const { name, site, createdAt } = product
+
+          if (!productNames.includes(name)) productNames.push(name)
+          if (!sites.includes(site)) sites.push(site)
+
+          const date = (product.date = createdAt.split("T")[0])
+          if (!dates.includes(date)) dates.push(date)
+        })
+
+        showData([])
+
+        // Обработка фильтра по сайтам
+        const siteSelect = document.querySelector(".filter-site")
+        siteSelect.innerHTML = getOptionHtml(sites)
+        siteSelect.addEventListener("change", e => {
+          filterOptions.site = e.target.value
+          showData(data)
+        })
+
+        // Обработка фильтра по дате
+        const dateSelect = document.querySelector(".filter-date")
+        dateSelect.innerHTML = getOptionHtml(dates)
+        dateSelect.addEventListener("change", e => {
+          filterOptions.date = e.target.value
+          showData(data)
+        })
+
+        // Обработка фильтров по названию продукта
+        const productNameInput = document.querySelector(
+          ".filter-match_product_name",
+        )
+        const productNameSelect = document.querySelector(".filter-product_name")
+        productNameSelect.innerHTML = getOptionHtml(productNames)
+
+        productNameInput.addEventListener("blur", e => {
+          filterOptions.productMatch = e.target.value
+          filterOptions.product = ""
+          productNameSelect.selectedIndex = 0
+          showData(data)
+        })
+
+        productNameSelect.addEventListener("change", e => {
+          filterOptions.product = e.target.value
+          filterOptions.productMatch = ""
+          productNameInput.value = ""
+          showData(data)
+        })
+
+        document
+          .querySelector(".info")
+          .addEventListener("click", async ({ target }) => {
+            if (target.classList.contains("btn-remove-product")) {
+              if (!confirm("Удалить позицию?")) return
+
+              target.disabled = true
+              const response = await fetch(
+                `/shop/api/product/${target.dataset.id}`,
+                {
+                  method: "delete",
+                },
+              )
+
+              if (response.status !== 200) {
+                target.disabled = false
+                return alert("Не получилось удалить позицию")
+              }
+
+              let node
+              while ((node = target.parentNode)) {
+                if (node.classList.contains("item")) {
+                  return node.remove()
+                }
+              }
+            }
+          })
+      })
+
+      function getOptionHtml(values) {
+        const options = values
+          .sort()
+          .map(name => `<option value="${name}">${name}</option>`)
+        return '<option value="">Все</option>' + options.join("")
+      }
+
+      function showData(data) {
+        const { site, product, date, productMatch } = filterOptions
+
+        if (!date && !site) {
+          document.querySelector(".search-text").textContent = ""
+          document.querySelector(".info").innerHTML = ""
+          return
+        }
+
+        const products =
+          site || product || date
+            ? data.filter(item => {
+                return (
+                  (!productMatch || item.name.includes(productMatch)) &&
+                  (!product || item.name === product) &&
+                  (!site || site === item.site) &&
+                  (!date || date === item.date)
+                )
+              })
+            : data
+
+        document.querySelector(
+          ".search-text",
+        ).textContent = `Найдено ${products.length} позиций`
+
+        function getWarningTextIfExists(warning) {
+          switch (warning) {
+            case 1:
+              return "Снят"
+            case 2:
+              return "404"
+            default:
+              return ""
+          }
+        }
+
+        const html = products
+          .map(
+            (
+              {
+                _id,
+                name,
+                site,
+                url,
+                price,
+                sku,
+                date,
+                error,
+                warning,
+                stocks,
+              },
+              i,
+            ) => {
+              const warn = typeof warning === "number" && warning > 0
+              const stock =
+                Array.isArray(stocks) && stocks.length
+                  ? stocks.map(({ count }) => count).join(", ")
+                  : getWarningTextIfExists(warning)
+
+              return `
+          <div class="item" data-warning="${warn}" data-error="${!!error}">
+            <span class="index">${i + 1}</span>
+            <a href="${url}" class="url">Ссылка</a>
+            <div class="date">${date}</div>
+            <div class="name">${name}</div>
+            <div class="site">${site}</div>
+            <div class="price">${price || ""}</div>
+            <div class="sku">${sku}</div>
+            <div class="stock">${stock}</div>
+            <div class="error">${error || ""}</div>
+            <button class='btn-remove-product' data-id="${_id}">Удалить</button>
+          </div>
+        `
+            },
+          )
+          .join("")
+
+        const header = `
+        <div class="item-header">
+          <span>№</span>
+          <div class="url">Ссылка</div>
+          <div class="date">Дата</div>
+          <div class="name">Имя</div>
+          <div class="site">Сайт</div>
+          <div class="price">Цена</div>
+          <div class="sku">SKU</div>
+          <div class="stock">Наличие</div>
+          <div class="error">Ошибка</div>
+          <div></div>
+        </div>
+      `
+
+        document.querySelector(".info").innerHTML = `<div class="items">${
+          header + html
+        }</div>`
+      }
+    </script>
+    <style>
+      body {
+        grid-gap: 10px;
+        align-items: start;
+        margin: 0;
+        padding: 10px 20px;
+      }
+
+      .items {
+        display: grid;
+        grid-template-columns: repeat(10, max-content);
+        grid-gap: 0 15px;
+      }
+
+      .item,
+      .item-header {
+        display: grid;
+        grid-column: 1 / -1;
+        grid-template-columns: subgrid;
+        padding: 6px 0;
+      }
+
+      .item:nth-child(even) {
+        background-color: #efefef;
+      }
+
+      .item:hover {
+        background-color: #ccc;
+      }
+
+      .item[data-warning="true"] {
+        color: orange;
+      }
+
+      .item[data-error="true"] {
+        color: red;
+      }
+
+      .item-header {
+        font-weight: bold;
+      }
+
+      .index {
+        color: black;
+      }
+
+      .filter-item {
+        margin-right: 10px;
+        padding: 5px;
+        display: inline-block;
+      }
+
+      .filter-item:hover {
+        background-color: #efefef;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="nav">
+      <a
+        href="/"
+        class="nav-item"
+        >Главная</a
+      >
+      <a
+        href="/candidates"
+        class="nav-item"
+        >Кандидаты</a
+      >
+      <a
+        href="/releases"
+        class="nav-item selected"
+        >Релиз</a
+      >
+      <a
+        href="/graphs"
+        class="nav-item"
+        >Графики</a
+      >
+    </div>
+    <div class="filter">
+      <select class="filter-site"></select>
+      <select class="filter-date"></select>
+      <select class="filter-product_name"></select>
+      <input
+        class="filter-match_product_name"
+        placeholder="Имя продукта"
+      />
+      <div class="search-text">info</div>
+    </div>
+    <div class="info">last update</div>
+  </body>
+</html>

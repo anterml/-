@@ -1,0 +1,27 @@
+*,
+*:before,
+*:after {
+  box-sizing: border-box;
+}
+
+.nav {
+  display: flex;
+  flex-flow: row wrap;
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 10px;
+}
+
+.nav-item {
+  margin-right: 10px;
+  padding: 5px;
+  display: inline-block;
+}
+
+.nav-item:hover {
+  background-color: #efefef;
+  cursor: pointer;
+}
+
+.selected {
+  color: red;
+}
